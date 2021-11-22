@@ -1,8 +1,6 @@
 import numpy as np
 import torch
 
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
 
 def plot_points(ax, points=None, values=None, simplices=None,
                 grid=False, axis='on', alpha=1, color='black', pane_color=(1.0, 1.0, 1.0, 1.0),
@@ -92,24 +90,6 @@ def fill_selected_neighbors(ax, tri, i, points, title=''):
     neigh = simplex_neighbor(tri, i)
     selected_all = selected + neigh
     color_simplices(ax, selected_all, tri.simplices, points, selected_fcolors=[0] + [1] * len(neigh), title=title)
-    return ax
-
-
-def plot_3d_cpwl(ax, tri, values, point_names=None, color='black', face_color='black'):
-
-    for s in tri.simplices:
-        coords = tri.grid_points[s]
-        verts = np.concatenate((coords, values[s][:, np.newaxis]), axis=1)
-        vert_tuple = list(map(tuple, verts))
-        fc = get_normal_facecolor(tri.lat_coeffs)
-        srf = Poly3DCollection(vert_tuple, alpha=0.5, facecolor=face_color, edgecolors='b', linewidths=0.5)
-
-        ax.add_collection3d(srf)
-
-
-    ax = plot_points(ax, points=tri.grid_points, values=values, title='3D view, points and values', xlabel='$x^{(1)}$',
-        ylabel='$x^{(2)}$', zlabel='$y$', point_names=point_names, s=5, color=color)
-
     return ax
 
 
