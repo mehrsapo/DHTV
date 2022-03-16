@@ -7,8 +7,8 @@ import numpy as np
 
 class NNTrainer:
 
-    def __init__(self, data, two_layer=False, device='cpu', batch_size=64,
-                 num_epochs=1000, log_step=None, valid_log_step=None, hidden=40, verbose=True):
+    def __init__(self, data, layer=2, device='cuda:3', batch_size=32,
+                 num_epochs=1000, weight_decay = 0.1, learning_rate=0.001, log_step=None, valid_log_step=None, hidden=40, verbose=True):
 
         self.verbose = verbose
         self.hidden = hidden
@@ -28,7 +28,7 @@ class NNTrainer:
         self.init_data_loader()
 
         self.device = device
-        self.init_device()
+        self.init_device(device)
 
         self.num_samples, self.num_batches = {}, {}
         self.save_train_test_info()
@@ -37,8 +37,10 @@ class NNTrainer:
         self.optimizer = None
         self.scheduler = None
 
-        self.build_network(self.dimension, two_layer)
-        self.set_optimizer()
+        self.build_network(self.dimension, layer)
+        self.net.double()
+        self.net.dtype = next(self.net.parameters()).dtype
+        self.set_optimizer(weight_decay=weight_decay, learning_rate=learning_rate)
 
         self.criterion = nn.MSELoss(reduction='mean')
         self.test_criterion = nn.MSELoss(reduction='sum')
@@ -46,10 +48,10 @@ class NNTrainer:
         self.criterion.to(self.device)
         self.test_criterion.to(self.device)
 
-    def init_device(self):
-        if self.device == 'cuda:0':
+    def init_device(self, device):
+        if self.device == device:
             if torch.cuda.is_available():
-                self.device = 'cuda:0'
+                self.device = device
                 if self.verbose:
                     print('\nUsing GPU.')
             else:
@@ -82,21 +84,21 @@ class NNTrainer:
                 print(f'no.  of {mode} samples : {self.num_samples[mode]}')
                 print(f'\nNumber of {mode} batches per epoch : {self.num_batches[mode]}')
 
-    def build_network(self, dimension, two_layer):
+    def build_network(self, dimension, layer):
 
-        self.net = Net(dimension, two_layer=two_layer, hidden=self.hidden)
+        self.net = Net(dimension, layer=layer, hidden=self.hidden)
         self.net = self.net.to(self.device)
         if self.verbose:
             print(f'Number of model parameters is {self.net.num_params}')
 
-    def set_optimizer(self, weight_decay=0.1, milestone=None):
+    def set_optimizer(self, weight_decay=0.1, milestone=None, learning_rate=0.001):
 
         if milestone is None:
-            milestone = [int(0.6*self.num_epochs), int(0.75*self.num_epochs), int(0.9*self.num_epochs)]
+            milestone = [int(0.4*self.num_epochs), int(0.6*self.num_epochs), int(0.8*self.num_epochs)]
 
         if self.verbose:
             print(f'milestone: {milestone}')
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.001, weight_decay=weight_decay)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestone)
 
@@ -106,6 +108,7 @@ class NNTrainer:
 
     def train(self):
 
+        print(self.device)
         self.net.train()
 
         if self.log_step is None:
@@ -127,16 +130,27 @@ class NNTrainer:
         if self.verbose:
             print('\nFinished training.')
 
+
+        loss = self.evaluate_results(mode='test')
+        print(f'\ntest mse : {loss}')
+
+        loss = self.evaluate_results(mode='valid')
+        print(f'\nvalid mse : {loss}')
+
+        loss = self.evaluate_results(mode='train')
+        print(f'\ntrain mse : {loss}')
+
+
     def train_epoch(self, epoch):
         print(f'\nEpoch: {epoch}\n')
-
+        
         running_loss = 0.
 
         for batch_idx, (inputs, labels) in enumerate(self.train_loader):
 
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            outputs = self.net(inputs)
-            loss = self.criterion(outputs, labels)
+            outputs = self.net(inputs.double())
+            loss = self.criterion(outputs.double(), labels.double())
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -191,10 +205,58 @@ class NNTrainer:
         for key, value in losses_dict.items():
             print('{}: {:7.3f} | '.format(key, value), end='')
 
-    def evaluate_results(self, mode='valid'):
-        assert mode in ['valid', 'test']
+    def compute_snr(self, x_values, mse):
+        """
+        Compute snr from gtruth values and mse of prediction.
+        Args:
+            x_values (torch.Tensor):
+                gtruth values for a given input.
+            mse (float):
+                MSE(x_values, x_values_hat), where x_values_hat are the
+                predictions for the same input.
+        Returns:
+            snr (dB)
+        """
+        gt_energy = (x_values ** 2).mean().item()
+        snr = 10 * math.log10(gt_energy / mse)
 
-        if mode == 'valid':
+        return snr
+
+    def compute_mse_snr(self, x_values, x_values_hat):
+        """
+        Compute mse and snr from gtruth values and predictions.
+        Args:
+            x_values (torch.Tensor):
+                gtruth values at a given location.
+            x_values_hat (torch.Tensor):
+                predictions for the same input.
+        Returns:
+            mse (float)
+            snr (db)
+        """
+        mse = ((x_values - x_values_hat)**2).mean().item()
+        snr = self.compute_snr(x_values, mse)
+
+        return mse, snr
+
+    def evaluate_results(self, mode):
+        """
+        Evaluate train, validation or test results.
+        Args:
+            mode (str):
+                'train', 'valid' or 'test'
+        Returns:
+            mse (float):
+                ``mode`` mean-squared-error.
+            output (torch.Tensor):
+                result of evaluating model on ``mode`` set.
+        """
+        assert mode in ['train', 'valid', 'test']
+
+        if mode == 'train':
+            dataloader = self.train_loader
+            data_dict = self.data.train
+        elif mode == 'valid':
             dataloader = self.valid_loader
             data_dict = self.data.valid
         else:
@@ -204,41 +266,33 @@ class NNTrainer:
         self.net.eval()
         running_loss = 0.
         total = 0
-        predictions = torch.tensor([])
+        output = torch.tensor([]).to(device=self.device)
+        values = torch.tensor([]).to(device=self.device)
 
         with torch.no_grad():
 
-            for batch_idx, (inputs, labels) in enumerate(dataloader):
+            # notation: _b = 'batch'
+            for batch_idx, (inputs_b, labels_b) in enumerate(dataloader):
+                inputs_b = inputs_b.to(device=self.device,
+                                       dtype=self.net.dtype)
+                labels_b = labels_b.to(device=self.device,
+                                       dtype=self.net.dtype)
+                outputs_b = self.net(inputs_b)
+                output = torch.cat((output, outputs_b), dim=0)
+                values = torch.cat((values, labels_b), dim=0)
 
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
-                outputs = self.net(inputs)
-                predictions = torch.cat((predictions, outputs.cpu()), dim=0)
-
-                loss = self.test_criterion(outputs, labels)
+                loss = self.test_criterion(outputs_b, labels_b)
                 running_loss += loss.item()
-                total += labels.size(0)
+                total += labels_b.size(0)
 
-        data_dict['predictions'] = predictions
+        data_dict['predictions'] = output
 
         loss = running_loss / total
         # sanity check
-        mse, _ = self.compute_mse_psnr(data_dict['values'], predictions)
-        assert np.allclose(mse, loss), '(mse: {:.7f}, loss: {:.7f})'.format(mse, loss)
+        mse, _ = self.compute_mse_snr(values.cpu(), output.cpu())
+        assert np.allclose(mse, loss), \
+            '(mse: {:.7f}, loss: {:.7f})'.format(mse, loss)
 
-        return loss
+        return mse
 
-    def compute_mse_psnr(self, x_values, x_values_hat, pixel_max=255):
-        """ """
-        mse = ((x_values - x_values_hat) ** 2).mean().item()
-        psnr = self.compute_psnr_from_mse(mse, pixel_max)
 
-        return mse, psnr
-
-    @staticmethod
-    def compute_psnr_from_mse(mse, pixel_max=255):
-        if mse == 0:
-            psnr = 100
-        else:
-            psnr = 20 * math.log10(pixel_max / math.sqrt(mse))
-
-        return psnr

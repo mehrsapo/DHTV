@@ -1,10 +1,16 @@
 from itertools import combinations
+from numpy.lib.twodim_base import tri
 from scipy.sparse import csr_matrix
 from scipy.spatial import Delaunay
 from scipy import special
 import numpy as np
 import torch
+import scipy.sparse.linalg
+from scipy.spatial import ConvexHull
+from quadprog import solve_qp
 
+def trunc(values, decs=0):
+    return np.trunc(values*10**decs)/(10**decs)
 
 class MyDelaunay(Delaunay):
 
@@ -23,18 +29,38 @@ class MyDelaunay(Delaunay):
         Construct the delaunay triangulation
         """
 
+        
         self.n_data_points, self.dimension = data_points.shape
 
         self.centers_barycentric_coordinates = np.ones((self.dimension+1, )) * (1/(self.dimension+1))
 
         if grid_points is None:
-            self.grid_points = data_points
-            self.grid_values = values
+            records_array = data_points
+            vals, inverse, count = np.unique(records_array, return_inverse=True,
+                                        return_counts=True, axis=0)
+
+            idx_vals_repeated = np.where(count > 0)[0]
+            vals_repeated = vals[idx_vals_repeated]
+
+            rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
+            _, inverse_rows = np.unique(rows, return_index=True)
+            res = np.split(cols, inverse_rows[1:])
+
+            values_unique = np.array([np.mean(values[i]) for i in res])
+            data_unique = np.array([list(data_points[i[0]]) for i in res])
+
+            self.grid_points = data_unique.copy()
+            self.grid_values = values_unique.copy()
+            data_points = data_unique.copy()
+            values = values_unique.copy()
+            self.n_data_points, self.dimension = data_points.shape
         else:
             self.grid_points = grid_points
             self.grid_values = np.zeros((self.grid_points.shape[0], ))
 
         super().__init__(self.grid_points)
+        self.hull_b =  ConvexHull(self.grid_points)
+
         if regular:
             counter = 0
             self.keep = np.ones(len(self.simplices), dtype=int)
@@ -73,6 +99,9 @@ class MyDelaunay(Delaunay):
         assert self.n_simplex_vertices == self.dimension + 1
 
         self.simplices_of_points = self.find_simplex_valid(data_points)
+        
+
+
 
         self.grid_points_of_simplices_of_points = self.valid_simplices[self.simplices_of_points]
 
@@ -92,14 +121,14 @@ class MyDelaunay(Delaunay):
 
         self.valid_simplices_centers = np.matmul(self.centers_barycentric_coordinates,
                                                  self.grid_points[self.simplices_sorted])
-
         self.lat_coeffs = self.give_affine_coef(self.valid_simplices_centers)
+
 
         return
 
     def find_simplex_valid(self, points):
 
-        simplices = self.find_simplex(points)
+        simplices = self.find_simplex(points, bruteforce=False)
         return self.keep_map[simplices]
 
     def construct_forward_matrix(self):
@@ -109,6 +138,15 @@ class MyDelaunay(Delaunay):
         data = self.data_points_barycentric_coordinate.flatten()
 
         self.H = csr_matrix((data, (rows, cols)), shape=(self.n_data_points, self.n_grid_points), dtype='float32')
+        self.H.eliminate_zeros()
+        self.H.check_format()
+
+        x = self.H
+        nonzero_mask = np.array(np.abs(x[x.nonzero()]) < 1e-5)[0]
+        rows = x.nonzero()[0][nonzero_mask]
+        cols = x.nonzero()[1][nonzero_mask]
+        x[rows, cols] = 0
+        self.H = x
         self.H.eliminate_zeros()
         self.H.check_format()
 
@@ -155,7 +193,7 @@ class MyDelaunay(Delaunay):
 
 
     def calculate_all_volumes(self):
-        self.volumes = np.array(list(map(self.vol_simplex, self.valid_simplices)))
+        self.volumes = np.array(list(map(self.vol_simplex, self.valid_simplices))) 
 
         return
 
@@ -252,15 +290,49 @@ class MyDelaunay(Delaunay):
         self.L.eliminate_zeros()
         self.L.check_format()
 
+        x = self.L
+        nonzero_mask = np.array(np.abs(x[x.nonzero()]) < 1e-5)[0]
+        rows = x.nonzero()[0][nonzero_mask]
+        cols = x.nonzero()[1][nonzero_mask]
+        x[rows, cols] = 0
+        self.L = x
+        self.L.eliminate_zeros()
+        self.L.check_format()
+
+
+        _, s, _ = scipy.sparse.linalg.svds(np.sqrt(2)*self.L, k=1)
+        self.s = s[0] ** 2 
+
         return
 
-    def evaluate(self, points, values=None):
+    def find_closest_point(self, point):
+        dist_2 = np.sum((self.grid_points - point)**2, axis=1)
+        return np.argmin(dist_2)
 
-        if values is None:
-            values = self.grid_values
 
+    def proj_extrapolate(self, z):
+        equations = self.hull_b.equations
+        G = np.eye(len(z), dtype=float)
+        a = np.array(z, dtype=float)
+        C = np.array(-equations[:, :-1], dtype=float)
+        b = np.array(equations[:, -1], dtype=float)
+        x, f, xu, itr, lag, act = solve_qp(G, a, C.T, b, meq=0, factorized=True)
+        return x
+
+    
+
+    def evaluate_base(self, points, values):
+        
+        points = np.array([points])
         simplices_of_points = self.find_simplex_valid(points)
-        non_valid_simplices = np.where(simplices_of_points == -1)
+
+        while simplices_of_points[0] == -1: 
+            points = trunc(self.proj_extrapolate(points[0]), 10)
+            points = np.array([points])
+            simplices_of_points = self.find_simplex_valid(points)
+
+
+        assert simplices_of_points[0] > -1
 
         values_of_simplices_of_points = values[self.valid_simplices[simplices_of_points]]
 
@@ -272,13 +344,38 @@ class MyDelaunay(Delaunay):
         points_barycentric_coordinate = np.concatenate((c, (1 - np.sum(c, axis=1))[:, np.newaxis]), axis=1)
 
         values = np.einsum('ij,ij-> i', values_of_simplices_of_points, points_barycentric_coordinate)
-        values[non_valid_simplices] = 0
-
         return values
+
+    def evaluate(self, points, values=None):
+
+        if values is None:
+            values = self.grid_values
+
+        simplices_of_points = self.find_simplex_valid(points)
+        non_valid_simplices = np.where(simplices_of_points == -1)[0]
+        values_of_simplices_of_points = values[self.valid_simplices[simplices_of_points]]
+
+        data_points_transform = self.valid_transform[simplices_of_points]
+        t = data_points_transform[:, :self.dimension, :]
+        r = data_points_transform[:, self.dimension, :]
+
+        c = np.einsum('BNi,Bi ->BN', t, points - r)
+        points_barycentric_coordinate = np.concatenate((c, (1 - np.sum(c, axis=1))[:, np.newaxis]), axis=1)
+
+        values_o = np.einsum('ij,ij-> i', values_of_simplices_of_points, points_barycentric_coordinate)
+
+        #for x in non_valid_simplices:
+            #values[x] = self.grid_values[self.find_closest_point(points[x])]
+
+        for x in non_valid_simplices:
+            z = self.proj_extrapolate(points[x])
+            values_o[x] = self.evaluate_base(trunc(z, 10), values)
+
+        return values_o
 
     def update_values(self, grid_values):
         self.grid_values = grid_values
-        self.data_values = self.H * self.grid_values
+        self.data_values = self.H.dot(self.grid_values)
         self.lat_coeffs = self.give_affine_coef(self.valid_simplices_centers)
         return
 

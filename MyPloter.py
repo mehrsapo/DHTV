@@ -3,9 +3,9 @@ import torch
 
 
 def plot_points(ax, points=None, values=None, simplices=None,
-                grid=False, axis='on', alpha=1, color='black', pane_color=(1.0, 1.0, 1.0, 1.0),
+                grid=False, axis='off', alpha=1, color='black', pane_color=(1.0, 1.0, 1.0, 1.0),
                 title=None, xlabel='', ylabel='', zlabel='',
-                point_names=None, print_point_names=True, s=1):
+                point_names=None, print_point_names=True, s=1, linewidth=2, show_points= True):
     """
     This functions plot points (2D or 3D (with values)) w/w.o. delaunay simplices
     """
@@ -28,8 +28,9 @@ def plot_points(ax, points=None, values=None, simplices=None,
             ax.scatter(points[:, 0], points[:, 1], color=color, alpha=alpha)
 
         else:
-            ax.triplot(points[:, 0], points[:, 1], simplices)
-            ax.scatter(points[:, 0], points[:, 1], color=color)
+            ax.triplot(points[:, 0], points[:, 1], simplices, linewidth=linewidth, color='black')
+            if show_points:
+                ax.scatter(points[:, 0], points[:, 1], color=color)
 
         ax.set_aspect('equal')
 
@@ -49,13 +50,14 @@ def plot_points(ax, points=None, values=None, simplices=None,
 
 
 def color_simplices(ax, selected, simplices_points, points, point_names=None,
-                    selected_fcolors=None, print_simplex_name=True, title=''):
+                    selected_fcolors=None, print_simplex_name=True, title='', linewidth=2):
     """
     This function fills selected simplices with chosen colors (if not, random)
     """
     simplices_centers = np.sum(points[simplices_points], axis=1) / 3
     selected_centers = simplices_centers[selected]
     selected_simplices = simplices_points[selected]
+
     if selected_fcolors is None:
         selected_fcolors = np.random.permutation(len(selected))
     else:
@@ -63,13 +65,37 @@ def color_simplices(ax, selected, simplices_points, points, point_names=None,
     # create a colormap with a single color
     cmap = "Pastel1"
     ax.tripcolor(points[:, 0], points[:, 1], selected_simplices, facecolors=selected_fcolors, cmap=cmap)
-    simplices_names = ['$P_{' + str(i) + '}$' for i in selected]
+    simplices_names = ['$S_{' + str(i+1) + '}$' for i in selected]
+    if print_simplex_name:
+        for i, name in enumerate(simplices_names):
+            ax.text(selected_centers[i, 0] - 0.05, selected_centers[i, 1], name, fontsize=15)
+
+    ax = plot_points(ax, points=points, title=title, simplices=simplices_points, point_names=point_names, linewidth=linewidth)
+
+    return ax
+
+def color_simplices_cpwl(ax, selected, simplices_points, points, point_names=None,
+                    selected_fcolors=None, print_simplex_name=True, title='', linewidth=2):
+    """
+    This function fills selected simplices with chosen colors (if not, random)
+    """
+    simplices_centers = np.sum(points[simplices_points], axis=1) / 3
+    selected_centers = simplices_centers[selected]
+    selected_simplices = simplices_points[selected]
+
+    if selected_fcolors is None:
+        selected_fcolors = np.random.permutation(len(selected))
+    else:
+        selected_fcolors = np.array(selected_fcolors)
+    # create a colormap with a single color
+    cmap = "Pastel1"
+    ax.tripcolor(points[:, 0], points[:, 1], selected_simplices, facecolors=selected_fcolors, cmap=cmap)
+    simplices_names = ['$P_{' + str(i+1) + '}$' for i in selected]
     if print_simplex_name:
         for i, name in enumerate(simplices_names):
             ax.text(selected_centers[i, 0], selected_centers[i, 1], name, fontsize=12)
 
-    ax = plot_points(ax, points=points, title=title, simplices=simplices_points,
-                     xlabel='$x^{(1)}$', ylabel='$x^{(2)}$', point_names=point_names)
+    ax = plot_points(ax, points=points, title=title, simplices=simplices_points, point_names=point_names, linewidth=linewidth, show_points= False)
 
     return ax
 
@@ -121,9 +147,9 @@ def map_val2color2d(val, vmin, vmax):
 def map_array2color2d(array, min=None, max=None):
     """ """
     if min is None:
-        min = array.amin(axis=0)
+        min = np.min(array, axis=0)
     if max is None:
-        max = array.amax(axis=0)
+        max = np.max(array, axis=0)
 
     return np.array([map_val2color2d(val, min, max) for val in array])
 
@@ -174,7 +200,7 @@ def add_normals_plot(plot_data, tri_reg, normals_scale=0.02):
     return plot_data
 
 
-def plot_with_gradient_map(tri_reg, a=1.2, b=1.4, c=1.3, lmbda=None, save_plot=False, title='', up=False, selected=None):
+def plot_with_gradient_map(tri_reg, a=1.2, b=1.4, c=1.3, lmbda=None, save_plot=False, title='', up=False, ref= 'c.png', selected=None):
 
     if selected is None:
         selected = list(range(tri_reg.n_simplices))
@@ -186,8 +212,9 @@ def plot_with_gradient_map(tri_reg, a=1.2, b=1.4, c=1.3, lmbda=None, save_plot=F
     j = simplices[selected, 1]
     k = simplices[selected, 2]
     opacity = 1
-    fc = get_normal_facecolor(tri_reg.lat_coeffs[selected])
 
+    fc = get_normal_facecolor(tri_reg.lat_coeffs[selected])
+    
     data = [go.Mesh3d(x=x_std[:, 0], y=x_std[:, 1], z=z, i=i, j=j, k=k, facecolor=fc, opacity=opacity)]
 
     # data = add_normals_plot(data, tri_reg)
@@ -201,13 +228,13 @@ def plot_with_gradient_map(tri_reg, a=1.2, b=1.4, c=1.3, lmbda=None, save_plot=F
 
     # assert view in ['up', 'side', '3D', '3D_2']
 
-    ax_dict = dict(linecolor='#000000', linewidth=4, showgrid=False,
-                   showticklabels=False, gridcolor='#000000', gridwidth=0.3,
-                   title=dict(font=dict(size=35)), showbackground=True)
+    ax_dict = dict(linecolor='#000000', linewidth=0, visible=False, showgrid=False,
+                   showticklabels=False, gridcolor='#000000', gridwidth=0,
+                   title=dict(font=dict(size=35)), showbackground=False)
 
     fig_dict = dict(
-        scene_aspectmode='data',
-        title= '$\lambda =' + str(lmbda) + ' - \mathrm{' +  title + '}$ ',
+        scene_aspectmode='manual', scene_aspectratio=dict(x=1, y=1, z=0.9),
+        title= '',
         scene=dict(
             xaxis=copy.deepcopy(ax_dict),
             yaxis=copy.deepcopy(ax_dict),
@@ -237,9 +264,9 @@ def plot_with_gradient_map(tri_reg, a=1.2, b=1.4, c=1.3, lmbda=None, save_plot=F
         fig_dict['scene']['camera']['up'] = dict(x=0, y=1, z=0)
 
     fig.update_layout(**fig_dict)
-
+ 
     if save_plot:
-        fig.write_image("face/correct_lmbda" + str(lmbda) + ".png")
+        fig.write_image(ref)
 
     fig.show()
 
