@@ -34,7 +34,8 @@ Developper Install
 
 Usage
 =====
-
+Learning example
+-------------------
 Here, we show an example on how to learn with DHTV:
 
 .. code-block:: python
