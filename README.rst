@@ -44,8 +44,6 @@ Here, we show an example on how to learn with DHTV:
     tri.construct_regularization_matrix()
 
 
-For full details, please consult `scripts/deepsplines_tutorial.py <https://github.com/joaquimcampos/DeepSplines/blob/master/scripts/deepsplines_tutorial.py>`_.
-
 Reproducing results
 -------------------
 
