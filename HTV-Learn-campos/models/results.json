@@ -1,0 +1,34 @@
+{
+    "face_htv_lmbda_9.0E-04": {
+        "test_mse": 2.369e-06,
+        "valid_mse": 2.651e-06,
+        "train_mse": 5.431e-06,
+        "admm_htv": 25.03,
+        "percentage_nonzero": 18.08,
+        "htv": 25.03
+    },
+    "face_htv_lmbda_1.0E-03": {
+        "test_mse": 2.372e-06,
+        "valid_mse": 2.634e-06,
+        "train_mse": 5.515e-06,
+        "admm_htv": 24.36,
+        "percentage_nonzero": 17.04,
+        "htv": 24.36
+    },
+    "face_htv_lmbda_8.0E-04": {
+        "test_mse": 2.373e-06,
+        "valid_mse": 2.672e-06,
+        "train_mse": 5.337e-06,
+        "admm_htv": 25.86,
+        "percentage_nonzero": 19.43,
+        "htv": 25.86
+    },
+    "face_htv_lmbda_2.0E-03": {
+        "test_mse": 2.673e-06,
+        "valid_mse": 2.818e-06,
+        "train_mse": 6.175e-06,
+        "admm_htv": 20.47,
+        "percentage_nonzero": 13.35,
+        "htv": 20.47
+    }
+}

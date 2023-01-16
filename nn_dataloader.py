@@ -2,22 +2,17 @@ import torch
 
 
 class NNDataLoader:
-    """ data_loader needs to receive a dataset object (see datasets.py) """
-
     def __init__(self, data_obj, batch_size):
         self.data = data_obj
         self.batch_size = batch_size
 
     def get_loader_in_memory(self, inputs, labels):
-        """ """
         data_loader = list(zip(inputs.split(self.batch_size), labels.split(self.batch_size)))
 
         return data_loader
 
     @staticmethod
     def shuffle_data_in_memory(inputs, labels):
-        """ Shuffle data when tensors are in memory """
-
         permutation_idx = torch.randperm(inputs.size(0))
         inputs = torch.index_select(inputs, 0, permutation_idx)
         labels = torch.index_select(labels, 0, permutation_idx)
@@ -25,8 +20,6 @@ class NNDataLoader:
         return inputs, labels
 
     def get_shuffled_train_loader_in_memory(self):
-        """ Get reshuffled train_loader when tensors are in memory """
-
         inputs, labels = self.shuffle_data_in_memory(self.data.train['input'], self.data.train['values'])
         train_loader = self.get_loader_in_memory(inputs, labels)
 

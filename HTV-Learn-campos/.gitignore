@@ -1,0 +1,8 @@
+data/*
+!data/*.obj
+__pycache__/
+.pytest_cache/
+*.log
+*.html
+output/
+logo/

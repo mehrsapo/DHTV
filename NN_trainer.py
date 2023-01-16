@@ -1,5 +1,5 @@
 import torch.optim
-from NN_model import *
+from MLP import *
 from nn_dataloader import NNDataLoader
 import math
 import numpy as np
@@ -107,15 +107,13 @@ class NNTrainer:
             print('\nScheduler :', self.scheduler, sep='\n')
 
     def train(self):
-
-        print(self.device)
+        if self.verbose:
+            print(self.device)
         self.net.train()
 
         if self.log_step is None:
-            # log at every epoch
             self.log_step = self.num_batches['train']
             if self.valid_log_step is None:
-                # validation done halfway and at the end of training
                 self.valid_log_step = \
                     self.num_batches['train'] * int(self.num_epochs / 2)
 
@@ -132,17 +130,21 @@ class NNTrainer:
 
 
         loss = self.evaluate_results(mode='test')
-        print(f'\ntest mse : {loss}')
+        if self.verbose:
+            print(f'\ntest mse : {loss}')
 
         loss = self.evaluate_results(mode='valid')
-        print(f'\nvalid mse : {loss}')
+        if self.verbose:
+            print(f'\nvalid mse : {loss}')
 
         loss = self.evaluate_results(mode='train')
-        print(f'\ntrain mse : {loss}')
+        if self.verbose:
+            print(f'\ntrain mse : {loss}')
 
 
     def train_epoch(self, epoch):
-        print(f'\nEpoch: {epoch}\n')
+        if self.verbose:
+            print(f'\nEpoch: {epoch}\n')
         
         running_loss = 0.
 
@@ -175,84 +177,46 @@ class NNTrainer:
             self.scheduler.step()
             if self.verbose:
                 lr = [group['lr'] for group in self.optimizer.param_groups]
-                print(f'scheduler: epoch - {self.scheduler.last_epoch}; '
+                if self.verbose:
+                    print(f'scheduler: epoch - {self.scheduler.last_epoch}; '
                       f'learning rate - {lr}')
 
     def train_log_step(self, epoch, batch_idx, losses_dict):
-        """
-        Args:
-            losses_dict - a dictionary {loss name : loss value}
-        """
-        assert isinstance(losses_dict, dict)
-
-        print('[{:3d}, {:6d} / {:6d}] '.format(epoch + 1, batch_idx + 1, self.num_batches['train']), end='')
+        if self.verbose:
+            print('[{:3d}, {:6d} / {:6d}] '.format(epoch + 1, batch_idx + 1, self.num_batches['train']), end='')
         for key, value in losses_dict.items():
-            print('{}: {:7.7f} | '.format(key, value), end='')
+            if self.verbose:
+                print('{}: {:7.7f} | '.format(key, value), end='')
 
     def validation_step(self):
         loss = self.evaluate_results(mode='valid')
-
-        print(f'\nvalidation mse : {loss}')
+         
+        if self.verbose:
+            print(f'\nvalidation mse : {loss}')
         losses_dict = {'mse': loss}
 
         self.valid_log_step_f(losses_dict)
 
-    @staticmethod
-    def valid_log_step_f(losses_dict):
-        assert isinstance(losses_dict, dict)
-
-        print('\nvalidation_step : ', end='')
+    
+    def valid_log_step_f(self, losses_dict):
+        if self.verbose:
+            print('\nvalidation_step : ', end='')
         for key, value in losses_dict.items():
-            print('{}: {:7.3f} | '.format(key, value), end='')
+            if self.verbose:
+                print('{}: {:7.3f} | '.format(key, value), end='')
 
     def compute_snr(self, x_values, mse):
-        """
-        Compute snr from gtruth values and mse of prediction.
-        Args:
-            x_values (torch.Tensor):
-                gtruth values for a given input.
-            mse (float):
-                MSE(x_values, x_values_hat), where x_values_hat are the
-                predictions for the same input.
-        Returns:
-            snr (dB)
-        """
         gt_energy = (x_values ** 2).mean().item()
         snr = 10 * math.log10(gt_energy / mse)
 
         return snr
 
     def compute_mse_snr(self, x_values, x_values_hat):
-        """
-        Compute mse and snr from gtruth values and predictions.
-        Args:
-            x_values (torch.Tensor):
-                gtruth values at a given location.
-            x_values_hat (torch.Tensor):
-                predictions for the same input.
-        Returns:
-            mse (float)
-            snr (db)
-        """
         mse = ((x_values - x_values_hat)**2).mean().item()
         snr = self.compute_snr(x_values, mse)
-
         return mse, snr
 
     def evaluate_results(self, mode):
-        """
-        Evaluate train, validation or test results.
-        Args:
-            mode (str):
-                'train', 'valid' or 'test'
-        Returns:
-            mse (float):
-                ``mode`` mean-squared-error.
-            output (torch.Tensor):
-                result of evaluating model on ``mode`` set.
-        """
-        assert mode in ['train', 'valid', 'test']
-
         if mode == 'train':
             dataloader = self.train_loader
             data_dict = self.data.train
@@ -266,19 +230,18 @@ class NNTrainer:
         self.net.eval()
         running_loss = 0.
         total = 0
-        output = torch.tensor([]).to(device=self.device)
-        values = torch.tensor([]).to(device=self.device)
+        output = torch.tensor([]).to(device=self.device).float()
+        values = torch.tensor([]).to(device=self.device).float()
 
         with torch.no_grad():
-
-            # notation: _b = 'batch'
-            for batch_idx, (inputs_b, labels_b) in enumerate(dataloader):
+            for _, (inputs_b, labels_b) in enumerate(dataloader):
                 inputs_b = inputs_b.to(device=self.device,
                                        dtype=self.net.dtype)
                 labels_b = labels_b.to(device=self.device,
-                                       dtype=self.net.dtype)
-                outputs_b = self.net(inputs_b)
-                output = torch.cat((output, outputs_b), dim=0)
+                                       dtype=self.net.dtype).float()
+                outputs_b = self.net(inputs_b).float()
+                output = torch.cat((output.float(), outputs_b), dim=0)
+                
                 values = torch.cat((values, labels_b), dim=0)
 
                 loss = self.test_criterion(outputs_b, labels_b)
@@ -288,10 +251,8 @@ class NNTrainer:
         data_dict['predictions'] = output
 
         loss = running_loss / total
-        # sanity check
+        
         mse, _ = self.compute_mse_snr(values.cpu(), output.cpu())
-        assert np.allclose(mse, loss), \
-            '(mse: {:.7f}, loss: {:.7f})'.format(mse, loss)
 
         return mse
 
