@@ -60,6 +60,7 @@ We can use this values to predict the model values:
 In the 2 dimensional case, we can also plot the model using:
 
 .. code-block:: python
+    
     tri.update_values(dhtv_sol.cpu().numpy())
     plot_with_gradient_map(tri, 0.5, 1, 1, 1)
 
