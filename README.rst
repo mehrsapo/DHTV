@@ -36,19 +36,34 @@ Usage
 =====
 Learning example
 -------------------
-Here, we show an example on how to learn with DHTV:
-
+First we need to build the DHTV model and compute forward (H) and regularization (L) operators:
 .. code-block:: python
 
-    tri = MyDelaunay(X_train, y_train)
-    tri.construct_forward_matrix()
-    tri.construct_regularization_matrix()
+    tri = MyDelaunay(X, y)  # X: input variables, y: target values
+    tri.construct_forward_matrix() # constructing H
+    tri.construct_regularization_matrix() # constructing L
 
+Then we solve the learning task: 
+.. code-block:: python
 
+    dhtv_sol, _ = double_fista(tri.data_values, tri.H, tri.L, tri.lip_H, tri.lip_L, lmbda, n_iter1, n_iter2, device='cuda:0')
+
+We can use this values to predict the model values: 
+.. code-block:: python
+
+    dhtv_predict = tri.evaluate(X, dhtv_sol.cpu().numpy())
+
+In the 2 dimensional case, we can also plot the model using:
+.. code-block:: python
+    tri.update_values(dhtv_sol.cpu().numpy())
+    plot_with_gradient_map(tri, 0.5, 1, 1, 1)
+
+See for more details <https://github.com/mehrsapo/DHTV/blob/main/intp_metric.ipynb>. 
+    
 Reproducing results
 -------------------
 
-The paper reults are available in notebooks IV.A, IV.B and IV.C. 
+The paper reults are available in notebooks IV.A, IV.B and IV.C, main_compare.py is resposible for creating the loaded data in IV.C. 
 
 Developers
 ==========
