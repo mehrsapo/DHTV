@@ -5,7 +5,6 @@ In this repository, we aim to:
 * Solve the regression problem with CPWL functions.
 
 * Reproduce of the results of the following paper:
-
     * `Delaunay-Triangulation-Based Learning with Hessian Total-Variation Regularization <https://arxiv.org/pdf/2208.07787.pdf>`_.
 
 
