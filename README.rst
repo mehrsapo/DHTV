@@ -63,6 +63,7 @@ In the 2 dimensional case, we can also plot the model using:
     tri.update_values(dhtv_sol.cpu().numpy())
     plot_with_gradient_map(tri, 0.5, 1, 1, 1)
 
+
 See for more details <https://github.com/mehrsapo/DHTV/blob/main/intp_metric.ipynb>. 
     
 Reproducing results
