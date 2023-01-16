@@ -38,6 +38,7 @@ Usage
 Learning example
 -------------------
 First we need to build the DHTV model and compute forward (H) and regularization (L) operators:
+
 .. code-block:: python
 
     tri = MyDelaunay(X, y)  # X: input variables, y: target values
@@ -45,16 +46,19 @@ First we need to build the DHTV model and compute forward (H) and regularization
     tri.construct_regularization_matrix() # constructing L
 
 Then we solve the learning task: 
+
 .. code-block:: python
 
     dhtv_sol, _ = double_fista(tri.data_values, tri.H, tri.L, tri.lip_H, tri.lip_L, lmbda, n_iter1, n_iter2, device='cuda:0')
 
 We can use this values to predict the model values: 
+
 .. code-block:: python
 
     dhtv_predict = tri.evaluate(X, dhtv_sol.cpu().numpy())
 
 In the 2 dimensional case, we can also plot the model using:
+
 .. code-block:: python
     tri.update_values(dhtv_sol.cpu().numpy())
     plot_with_gradient_map(tri, 0.5, 1, 1, 1)
