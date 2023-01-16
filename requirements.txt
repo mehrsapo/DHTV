@@ -1,0 +1,9 @@
+numpy
+torch
+scipy
+quadprog
+kaleido
+nbformat
+matplotlib
+pandas
+scikit-learn
