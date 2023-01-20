@@ -1,5 +1,5 @@
 class Data:
-
+# data class for the network
     def __init__(self):
 
         self.train = {}
