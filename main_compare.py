@@ -18,6 +18,8 @@ from NN_trainer import *
 from DHTVPac.HTV_Delaunay import MyDelaunay
 from DHTVPac.opt_solver import double_fista
 
+# generate results for IV.C
+
 np.random.seed(2022)
 
 parser = argparse.ArgumentParser()
