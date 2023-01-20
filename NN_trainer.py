@@ -4,7 +4,7 @@ from nn_dataloader import NNDataLoader
 import math
 import numpy as np
 
-
+#neural net for comparison
 class NNTrainer:
 
     def __init__(self, data, layer=2, device='cuda:3', batch_size=32,
