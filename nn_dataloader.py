@@ -1,5 +1,6 @@
 import torch
 
+# data loader for networks
 
 class NNDataLoader:
     def __init__(self, data_obj, batch_size):

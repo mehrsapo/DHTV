@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as functional
 
-
+# network arch 
 class Net(nn.Module):
     """
     D Fully-connected network with ReLU activations.

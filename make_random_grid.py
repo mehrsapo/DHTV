@@ -2,7 +2,7 @@ import pickle
 
 import numpy as np
 
-
+# generate grid for comparison
 from DHTVPac.HTV_Delaunay import MyDelaunay
 
 learn = False
